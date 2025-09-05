@@ -68,4 +68,30 @@ WORKDIR /home/node
 COPY --from=app-artifact-processor /app /usr/local/lib/node_modules/n8n
 
 # Copy launcher binaries
-COPY --from=launcher-downloader /launcher-bi
+COPY --from=launcher-downloader /launcher-bin/* /usr/local/bin/
+
+# Copy entrypoint & task runner config
+COPY docker/images/n8n/docker-entrypoint.sh /
+COPY docker/images/n8n/n8n-task-runners.json /etc/n8n-task-runners.json
+
+# Rebuild native modules and fix paths
+RUN cd /usr/local/lib/node_modules/n8n && \
+    npm rebuild sqlite3 && \
+    ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n && \
+    mkdir -p /home/node/.n8n && \
+    chown -R node:node /home/node
+
+# Optional: fix npm vulnerabilities
+RUN npm install -g npm@11.4.2
+RUN cd /usr/local/lib/node_modules/n8n/node_modules/pdfjs-dist && npm install @napi-rs/canvas
+
+EXPOSE 5678/tcp
+USER node
+
+ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
+
+LABEL org.opencontainers.image.title="n8n" \
+      org.opencontainers.image.description="Workflow Automation Tool without AI Chat" \
+      org.opencontainers.image.source="https://github.com/n8n-io/n8n" \
+      org.opencontainers.image.url="https://n8n.io" \
+      org.opencontainers.image.version=${N8N_VERSION}
