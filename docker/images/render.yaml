@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: n8n
+    env: docker
+    plan: free   # change to starter/standard if you need more resources
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: N8N_BASIC_AUTH_ACTIVE
+        value: "true"
+      - key: N8N_BASIC_AUTH_USER
+        value: "lucus"
+      - key: N8N_BASIC_AUTH_PASSWORD
+        value: "n8n@2006"
+      - key: WEBHOOK_URL
+        value: "https://your-app.onrender.com/"
