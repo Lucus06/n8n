@@ -1,5 +1,5 @@
 # ==================================================================
-# Stage 1: Base system dependencies (same as your original)
+# Stage 1: Base system dependencies
 # ==================================================================
 ARG NODE_VERSION=22
 ARG N8N_VERSION=1.109.2
@@ -9,26 +9,24 @@ ARG TARGETPLATFORM
 FROM n8nio/base:${NODE_VERSION} AS system-deps
 
 # ==================================================================
-# Stage 2: Application Source
+# Stage 2: Application Artifact Processor
 # ==================================================================
 FROM alpine:3.22.0 AS app-artifact-processor
 
-# Copy source code (frontend + backend)
-COPY . /app/
-
 WORKDIR /app
+
+# Copy n8n backend packages only (skip @n8n/chat)
+COPY ./packages/backend ./packages/backend
+COPY package.json pnpm-lock.yaml ./
 
 # Install pnpm
 RUN npm install -g pnpm
 
-# Set Node memory limit for heavy frontend builds
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Build all packages including @n8n/chat (AI frontend)
-RUN pnpm run build
+# Build backend only
+RUN pnpm run build --filter './packages/backend...'
 
 # ==================================================================
 # Stage 3: Task Runner Launcher
@@ -45,3 +43,29 @@ RUN set -e; \
     esac; \
     mkdir /launcher-temp && cd /launcher-temp; \
     wget -q "https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz"; \
+    wget -q "https://github.com/n8n-io/task-runner-launcher/releases/download/${LAUNCHER_VERSION}/task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256"; \
+    echo "$(cat task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz.sha256) task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz" > checksum.sha256; \
+    sha256sum -c checksum.sha256; \
+    mkdir -p /launcher-bin; \
+    tar xzf task-runner-launcher-${LAUNCHER_VERSION}-linux-${ARCH_NAME}.tar.gz -C /launcher-bin; \
+    cd / && rm -rf /launcher-temp
+
+# ==================================================================
+# Stage 4: Final Runtime Image
+# ==================================================================
+FROM system-deps AS runtime
+
+ARG N8N_VERSION
+ARG N8N_RELEASE_TYPE=dev
+ENV NODE_ENV=production
+ENV N8N_RELEASE_TYPE=${N8N_RELEASE_TYPE}
+ENV NODE_ICU_DATA=/usr/local/lib/node_modules/full-icu
+ENV SHELL=/bin/sh
+
+WORKDIR /home/node
+
+# Copy built backend
+COPY --from=app-artifact-processor /app /usr/local/lib/node_modules/n8n
+
+# Copy launcher binaries
+COPY --from=launcher-downloader /launcher-bi
